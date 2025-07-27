@@ -1,141 +1,200 @@
-// components/cart/CartView.tsx
+// components/marketplace/CartView.tsx
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 
-export function CartView() {
-  const [cart, setCart] = useState<any[]>([]);
-  const [groupedCart, setGroupedCart] = useState<any>({});
+interface CartItem {
+  id: string;
+  name: string;
+  price?: number;
+  cartQuantity: number;
+  owner_type?: string; // for listings
+  posted_by_type?: string; // for special deals
+  description?: string;
+  contact_info?: {
+    phone?: string;
+    email?: string;
+    location?: string;
+  };
+}
 
+export function CartView() {
+  const router = useRouter();
+  const [cart, setCart] = useState<CartItem[]>([]);
+  const [groupedCart, setGroupedCart] = useState<Record<string, CartItem[]>>(
+    {}
+  );
+
+  // Load cart from localStorage once
   useEffect(() => {
-    loadCartFromStorage();
+    const saved = localStorage.getItem("smartmandi_cart");
+    if (saved) {
+      try {
+        setCart(JSON.parse(saved));
+      } catch {
+        localStorage.removeItem("smartmandi_cart");
+      }
+    }
   }, []);
 
+  // Whenever cart changes, regroup and sync localStorage
   useEffect(() => {
-    groupCartBySupplier();
-  }, [cart]);
-
-  const loadCartFromStorage = () => {
-    const savedCart = localStorage.getItem("smartmandi_cart");
-    if (savedCart) {
-      setCart(JSON.parse(savedCart));
-    }
-  };
-
-  const groupCartBySupplier = () => {
-    const grouped = cart.reduce((acc, item) => {
-      const key = item.owner_type || item.posted_by_type || "unknown";
-      if (!acc[key]) {
-        acc[key] = [];
-      }
+    const groups = cart.reduce((acc, item) => {
+      const key = item.posted_by_type || item.owner_type || "unknown";
+      acc[key] = acc[key] ?? [];
       acc[key].push(item);
       return acc;
-    }, {});
+    }, {} as Record<string, CartItem[]>);
 
-    setGroupedCart(grouped);
-  };
+    setGroupedCart(groups);
+    localStorage.setItem("smartmandi_cart", JSON.stringify(cart));
+  }, [cart]);
 
   const clearCart = () => {
     setCart([]);
     localStorage.removeItem("smartmandi_cart");
   };
 
-  const getContactInfo = (supplierType: string, items: any[]) => {
-    // Extract contact information from item descriptions
-    const contactInfo = items[0]?.description?.match(/Contact: ([^,]+)/)?.[1];
-    const location = items[0]?.description?.match(/Location: ([^,]+)/)?.[1];
-
-    return {
-      contact: contactInfo || "Contact via platform",
-      location: location || "Location to be provided",
-      type: supplierType,
-    };
+  const removeItem = (id: string) => {
+    setCart((prev) => prev.filter((item) => item.id !== id));
   };
 
+  const updateQuantity = (id: string, qty: number) => {
+    if (qty < 1) return;
+    setCart((prev) =>
+      prev.map((item) =>
+        item.id === id ? { ...item, cartQuantity: qty } : item
+      )
+    );
+  };
+
+  // Extract contact info either from JSON or by regexing description
+  const extractContact = useCallback((items: CartItem[]) => {
+    const item = items[0];
+    if (item.contact_info) {
+      return {
+        contact:
+          item.contact_info.phone ||
+          item.contact_info.email ||
+          "Contact via platform",
+        location: item.contact_info.location || "Location TBD",
+      };
+    }
+
+    const desc = item.description || "";
+    const phoneMatch = desc.match(/(?:Contact|Phone):\s*([\d\-+]+)/i);
+    const emailMatch = desc.match(
+      /([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/
+    );
+    const locMatch = desc.match(/Location:\s*([^,]+)/i);
+
+    return {
+      contact: phoneMatch?.[1] || emailMatch?.[1] || "Contact via platform",
+      location: locMatch?.[1].trim() || "Location TBD",
+    };
+  }, []);
+
+  const totalItems = cart.reduce((sum, item) => sum + item.cartQuantity, 0);
+
   return (
-    <div className="container mx-auto p-6">
-      <h1 className="text-3xl font-bold mb-6">Your Cart</h1>
+    <div className="container mx-auto p-6 max-w-3xl min-h-[60vh]">
+      <h1 className="text-3xl font-bold mb-6 text-center">Your Cart</h1>
 
       {cart.length === 0 ? (
-        <div className="text-center py-12">
-          <p className="text-gray-500">Your cart is empty</p>
-          <Button className="mt-4">Continue Shopping</Button>
+        <div className="text-center py-20 space-y-4">
+          <p className="text-gray-500 text-lg">Your cart is empty.</p>
+          <Button onClick={() => router.push("/")} variant="outline">
+            Continue Shopping
+          </Button>
         </div>
       ) : (
-        <div className="space-y-6">
-          {Object.entries(groupedCart).map(
-            ([supplierType, items]: [string, any]) => {
-              const contactInfo = getContactInfo(supplierType, items);
-
+        <>
+          <div className="space-y-8">
+            {Object.entries(groupedCart).map(([supplierType, items]) => {
+              const { contact, location } = extractContact(items);
               return (
-                <Card key={supplierType} className="border-2">
+                <Card key={supplierType} className="border shadow-sm">
                   <CardHeader>
                     <div className="flex justify-between items-center">
-                      <CardTitle className="flex items-center gap-2">
-                        <Badge variant="outline">{supplierType}</Badge>
-                        Supplier Contact
+                      <CardTitle className="flex items-center gap-2 text-lg">
+                        <Badge variant="outline" className="capitalize">
+                          {supplierType}
+                        </Badge>
+                        Supplier
                       </CardTitle>
                     </div>
                   </CardHeader>
 
                   <CardContent>
-                    {/* Contact Information */}
-                    <div className="bg-blue-50 p-4 rounded-lg mb-4">
-                      <h4 className="font-semibold mb-2">Contact Details:</h4>
+                    {/* Contact Box */}
+                    <div className="bg-blue-50 p-4 rounded-lg mb-6">
                       <p className="text-sm">
-                        <strong>Phone/Contact:</strong> {contactInfo.contact}
+                        <strong>Contact:</strong> {contact}
                       </p>
                       <p className="text-sm">
-                        <strong>Location:</strong> {contactInfo.location}
-                      </p>
-                      <p className="text-sm text-gray-600 mt-2">
-                        <em>Contact directly to arrange pickup or delivery</em>
+                        <strong>Location:</strong> {location}
                       </p>
                     </div>
 
-                    {/* Items List */}
-                    <div className="space-y-2">
-                      <h4 className="font-semibold">
-                        Items from this supplier:
-                      </h4>
-                      {items.map((item: any, index: number) => (
+                    {/* Line Items */}
+                    <div className="space-y-3">
+                      {items.map((item) => (
                         <div
-                          key={index}
-                          className="flex justify-between items-center p-2 bg-gray-50 rounded"
+                          key={item.id}
+                          className="flex justify-between items-center bg-gray-50 px-4 py-3 rounded"
                         >
-                          <div>
-                            <span className="font-medium">{item.name}</span>
-                            {item.price && (
-                              <span className="text-green-600 ml-2">
-                                ₹{item.price}
-                              </span>
+                          <div className="flex-1">
+                            <p className="font-medium truncate">{item.name}</p>
+                            {item.price !== undefined && (
+                              <p className="text-green-600 text-sm">
+                                ₹{item.price.toFixed(2)} each
+                              </p>
                             )}
                           </div>
-                          <span className="text-sm text-gray-600">
-                            Qty: {item.cartQuantity || 1}
-                          </span>
+                          <div className="flex items-center space-x-2">
+                            <input
+                              type="number"
+                              min={1}
+                              value={item.cartQuantity}
+                              onChange={(e) =>
+                                updateQuantity(item.id, Number(e.target.value))
+                              }
+                              className="w-16 border rounded px-2 py-1 text-center"
+                            />
+                            <button
+                              onClick={() => removeItem(item.id)}
+                              aria-label="Remove item"
+                              className="text-red-600 hover:text-red-800 text-xl font-bold"
+                            >
+                              &times;
+                            </button>
+                          </div>
                         </div>
                       ))}
                     </div>
                   </CardContent>
                 </Card>
               );
-            }
-          )}
+            })}
+          </div>
 
-          <div className="flex justify-between items-center">
-            <Button variant="outline" onClick={clearCart}>
+          {/* Footer */}
+          <div className="mt-8 flex justify-between items-center">
+            <Button variant="destructive" onClick={clearCart}>
               Clear Cart
             </Button>
-            <p className="text-sm text-gray-600">
-              Total items:{" "}
-              {cart.reduce((sum, item) => sum + (item.cartQuantity || 1), 0)}
-            </p>
+            <div className="flex items-center space-x-4">
+              <p className="text-sm text-gray-700 font-semibold">
+                Total Items: {totalItems}
+              </p>
+              <Button onClick={() => router.push("/cart")}>Buy Now</Button>
+            </div>
           </div>
-        </div>
+        </>
       )}
     </div>
   );

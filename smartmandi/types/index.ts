@@ -2,6 +2,8 @@
 export type ListingSource = 'sabzimandi' | 'firm' | 'vendor'
 
 export interface Listing {
+    state: string
+    district: string
     id: string
     name: string
     type: ListingSource
