@@ -10,10 +10,6 @@ const nextConfig: NextConfig = {
       },
     ],
   },
-  experimental: {
-    optimizeCss: false, // Disable lightningcss temporarily
-    turbo: false,       // Turn off Turbo if it's causing cache or reload issues
-  },
   reactStrictMode: true,
 };
 
