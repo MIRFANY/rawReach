@@ -113,9 +113,9 @@ export async function POST(req: NextRequest) {
                 market: r["Mandi / Market"]?.toString().trim() || null,
                 state: r["State"]?.toString().trim() || null,
                 district: r["District"]?.toString().trim() || null,
-                min_price: r["Min Price"] ? parseFloat(r["Min Price"]) : null,
-                modal_price: r["Modal Price"] ? parseFloat(r["Modal Price"]) : null,
-                max_price: r["Max Price"] ? parseFloat(r["Max Price"]) : null,
+                min_price: r["Min Price"] ? r["Min Price"] : null,
+                modal_price: r["Modal Price"] ? r["Modal Price"] : null,
+                max_price: r["Max Price"] ? r["Max Price"] : null,
                 arrival_date: new Date(), // or parse from Excel if available
             };
         }).filter(Boolean);

@@ -22,35 +22,93 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ShoppingCart } from "lucide-react";
+import { ShoppingCart, Loader2 } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
 import { INDIA_STATES, INDIA_DISTRICTS } from "@/public/data/india";
+
+type MandiRow = {
+  id: string;
+  commodity: string;
+  variety: string | null;
+  market: string | null;
+  state: string;
+  district: string;
+  modal_price: number | null;
+  arrival_date: string;
+};
 
 export function MarketplaceGrid() {
   const router = useRouter();
+
+  // ─── State ─────────────────────────────────────────────────────────
   const [listings, setListings] = useState<Listing[]>([]);
+  const [mandiRows, setMandiRows] = useState<MandiRow[]>([]);
+  const [cart, setCart] = useState<any[]>([]);
+
+  const [loadingListings, setLoadingListings] = useState(true);
+  const [loadingMandi, setLoadingMandi] = useState(false);
+
+  // filters
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<"all" | Listing["type"]>("all");
-  const [stateFilter, setStateFilter] = useState<string>("");
-  const [districtFilter, setDistrictFilter] = useState<string>("");
-  const [cart, setCart] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [stateFilter, setStateFilter] = useState("");
+  const [districtFilter, setDistrictFilter] = useState("");
 
-  // initial data fetch + load cart
+  // ─── Initial Listings + Cart ────────────────────────────────────────
   useEffect(() => {
     (async () => {
       const { data, error } = await supabase
         .from("listings")
         .select("*")
         .order("created_at", { ascending: false });
-      if (error) console.error(error);
+      if (error) console.error("Listings fetch error:", error);
       else setListings(data as Listing[]);
-      setLoading(false);
+      setLoadingListings(false);
     })();
+
     const saved = localStorage.getItem("smartmandi_cart");
     if (saved) setCart(JSON.parse(saved));
   }, []);
 
-  const addToCart = (item: Listing) => {
+  // ─── Fetch Sabzi Mandi Data ─────────────────────────────────────────
+  useEffect(() => {
+    if (!stateFilter) return setMandiRows([]);
+    if (typeFilter !== "sabzimandi" && typeFilter !== "all")
+      return setMandiRows([]);
+
+    (async () => {
+      setLoadingMandi(true);
+      // trigger the bulk-import
+      try {
+        await fetch("/api/admin/bulk-import", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            url: `https://www.kisandeals.com/mandiprices/ALL/ALL/${encodeURIComponent(
+              stateFilter
+            )}`,
+          }),
+        });
+      } catch (err) {
+        console.error("Bulk-import error:", err);
+      }
+
+      // then read from supabase
+      const { data, error } = await supabase
+        .from("mandi_prices")
+        .select("*")
+        .eq("state", stateFilter)
+        .order("arrival_date", { ascending: false })
+        .limit(100);
+
+      if (error) console.error("Mandi fetch error:", error);
+      else setMandiRows(data as MandiRow[]);
+      setLoadingMandi(false);
+    })();
+  }, [stateFilter, typeFilter]);
+
+  // ─── Cart Helpers ───────────────────────────────────────────────────
+  const addToCart = (item: any) => {
     const exists = cart.find((c) => c.id === item.id);
     const newCart = exists
       ? cart.map((c) =>
@@ -61,7 +119,24 @@ export function MarketplaceGrid() {
     localStorage.setItem("smartmandi_cart", JSON.stringify(newCart));
   };
 
-  const visible = listings.filter((l) => {
+  // ─── Merge & Filter ─────────────────────────────────────────────────
+  const convertedMandi: Listing[] = mandiRows.map((m) => ({
+    id: m.id,
+    name: m.variety ? `${m.commodity} - ${m.variety}` : m.commodity,
+    type: "sabzimandi",
+    price: m.modal_price ?? 0,
+    quantity: 1,
+    owner_name: null,
+    description: m.market ? `Market: ${m.market}` : "",
+    photo_url: null,
+    contact_info: null,
+    created_at: m.arrival_date,
+    state: m.state,
+    district: m.district,
+  }));
+
+  const allItems = [...listings, ...convertedMandi];
+  const visible = allItems.filter((l) => {
     const matchesText =
       l.name.toLowerCase().includes(search.toLowerCase()) ||
       (l.description ?? "").toLowerCase().includes(search.toLowerCase());
@@ -71,16 +146,36 @@ export function MarketplaceGrid() {
     return matchesText && matchesType && matchesState && matchesDistrict;
   });
 
-  if (loading) return <p className="text-center p-8">Loading…</p>;
+  // ─── Loading UI ─────────────────────────────────────────────────────
+  if (loadingListings) {
+    return (
+      <div className="p-8">
+        <Skeleton className="h-8 w-1/3 mb-4" />
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <Skeleton key={i} className="h-48 w-full rounded-lg" />
+          ))}
+        </div>
+      </div>
+    );
+  }
 
+  // ─── Render ─────────────────────────────────────────────────────────
   return (
     <section className="relative">
       <div className="mb-6">
-        <h1 className="text-3xl font-bold mb-4">SmartMandi Marketplace</h1>
+        <div className="flex items-center justify-between mb-4">
+          <h1 className="text-3xl font-bold">SmartMandi Marketplace</h1>
+          {loadingMandi && (
+            <Badge variant="outline" className="flex items-center">
+              Updating Mandi
+              <Loader2 className="ml-2 h-4 w-4 animate-spin" />
+            </Badge>
+          )}
+        </div>
 
         {/* filters */}
         <div className="flex flex-wrap gap-4 mb-4">
-          {/* search */}
           <input
             type="text"
             value={search}
@@ -89,7 +184,6 @@ export function MarketplaceGrid() {
             className="flex-1 px-3 py-2 border rounded-md"
           />
 
-          {/* type */}
           <select
             value={typeFilter}
             onChange={(e) => setTypeFilter(e.target.value as any)}
@@ -98,10 +192,8 @@ export function MarketplaceGrid() {
             <option value="all">All Sources</option>
             <option value="sabzimandi">Sabzimandi</option>
             <option value="firm">Firms</option>
-            <option value="vendor">Vendors</option>
           </select>
 
-          {/* state */}
           <Select
             onValueChange={(val) => {
               setStateFilter(val);
@@ -123,7 +215,6 @@ export function MarketplaceGrid() {
             </SelectContent>
           </Select>
 
-          {/* district */}
           <Select
             onValueChange={(val) => setDistrictFilter(val)}
             disabled={!stateFilter}
@@ -145,7 +236,6 @@ export function MarketplaceGrid() {
         </div>
       </div>
 
-      {/* grid */}
       {visible.length === 0 ? (
         <p className="text-center text-gray-500">No matches.</p>
       ) : (
@@ -216,7 +306,10 @@ export function MarketplaceGrid() {
                         const updated = cart
                           .map((c) =>
                             c.id === item.id
-                              ? { ...c, cartQuantity: c.cartQuantity - 1 }
+                              ? {
+                                  ...c,
+                                  cartQuantity: c.cartQuantity - 1,
+                                }
                               : c
                           )
                           .filter((c) => c.cartQuantity > 0);

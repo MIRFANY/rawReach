@@ -211,7 +211,6 @@ export default function FirmDashboard() {
               required
             >
               <option value="">Select Type</option>
-              <option value="sabzimandi">Sabzimandi</option>
               <option value="firm">Firm</option>
               <option value="vendor">Vendor</option>
             </select>
