@@ -10,10 +10,10 @@ import { Badge } from "@/components/ui/badge";
 interface CartItem {
   id: string;
   name: string;
-  price?: number;
+  price?: number; // total package price
   cartQuantity: number;
-  owner_type?: string; // for listings
-  posted_by_type?: string; // for special deals
+  owner_type?: string;
+  posted_by_type?: string;
   description?: string;
   contact_info?: {
     phone?: string;
@@ -29,7 +29,7 @@ export function CartView() {
     {}
   );
 
-  // Load cart from localStorage once
+  // Load cart from localStorage
   useEffect(() => {
     const saved = localStorage.getItem("smartmandi_cart");
     if (saved) {
@@ -41,7 +41,7 @@ export function CartView() {
     }
   }, []);
 
-  // Whenever cart changes, regroup and sync localStorage
+  // Regroup and sync to localStorage when cart changes
   useEffect(() => {
     const groups = cart.reduce((acc, item) => {
       const key = item.posted_by_type || item.owner_type || "unknown";
@@ -72,7 +72,6 @@ export function CartView() {
     );
   };
 
-  // Extract contact info either from JSON or by regexing description
   const extractContact = useCallback((items: CartItem[]) => {
     const item = items[0];
     if (item.contact_info) {
@@ -84,17 +83,15 @@ export function CartView() {
         location: item.contact_info.location || "Location TBD",
       };
     }
-
     const desc = item.description || "";
-    const phoneMatch = desc.match(/(?:Contact|Phone):\s*([\d\-+]+)/i);
+    const phoneMatch = desc.match(/(?:Contact|Phone):\s*([\d+-]+)/i);
     const emailMatch = desc.match(
-      /([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/
+      /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/i
     );
     const locMatch = desc.match(/Location:\s*([^,]+)/i);
-
     return {
-      contact: phoneMatch?.[1] || emailMatch?.[1] || "Contact via platform",
-      location: locMatch?.[1].trim() || "Location TBD",
+      contact: phoneMatch?.[1] || emailMatch?.[0] || "Contact via platform",
+      location: locMatch?.[1]?.trim() || "Location TBD",
     };
   }, []);
 
@@ -107,7 +104,7 @@ export function CartView() {
       {cart.length === 0 ? (
         <div className="text-center py-20 space-y-4">
           <p className="text-gray-500 text-lg">Your cart is empty.</p>
-          <Button onClick={() => router.push("/")} variant="outline">
+          <Button variant="outline" onClick={() => router.push("/")}>
             Continue Shopping
           </Button>
         </div>
@@ -119,18 +116,14 @@ export function CartView() {
               return (
                 <Card key={supplierType} className="border shadow-sm">
                   <CardHeader>
-                    <div className="flex justify-between items-center">
-                      <CardTitle className="flex items-center gap-2 text-lg">
-                        <Badge variant="outline" className="capitalize">
-                          {supplierType}
-                        </Badge>
-                        Supplier
-                      </CardTitle>
+                    <div className="flex items-center">
+                      <Badge variant="outline" className="capitalize mr-2">
+                        {supplierType}
+                      </Badge>
+                      Supplier Contact
                     </div>
                   </CardHeader>
-
                   <CardContent>
-                    {/* Contact Box */}
                     <div className="bg-blue-50 p-4 rounded-lg mb-6">
                       <p className="text-sm">
                         <strong>Contact:</strong> {contact}
@@ -139,8 +132,6 @@ export function CartView() {
                         <strong>Location:</strong> {location}
                       </p>
                     </div>
-
-                    {/* Line Items */}
                     <div className="space-y-3">
                       {items.map((item) => (
                         <div
@@ -150,8 +141,18 @@ export function CartView() {
                           <div className="flex-1">
                             <p className="font-medium truncate">{item.name}</p>
                             {item.price !== undefined && (
-                              <p className="text-green-600 text-sm">
-                                ₹{item.price.toFixed(2)} each
+                              <p className="text-sm text-green-600">
+                                ₹{item.price.toFixed(2)} total
+                                {item.cartQuantity > 1 && (
+                                  <>
+                                    {" "}
+                                    · ₹
+                                    {(item.price / item.cartQuantity).toFixed(
+                                      2
+                                    )}
+                                    /kg
+                                  </>
+                                )}
                               </p>
                             )}
                           </div>
@@ -181,8 +182,6 @@ export function CartView() {
               );
             })}
           </div>
-
-          {/* Footer */}
           <div className="mt-8 flex justify-between items-center">
             <Button variant="destructive" onClick={clearCart}>
               Clear Cart
@@ -191,7 +190,9 @@ export function CartView() {
               <p className="text-sm text-gray-700 font-semibold">
                 Total Items: {totalItems}
               </p>
-              <Button onClick={() => router.push("/cart")}>Buy Now</Button>
+              <Button onClick={() => router.push("/cart")}>
+                Proceed to Checkout
+              </Button>
             </div>
           </div>
         </>
